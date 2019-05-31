@@ -3,9 +3,13 @@ Web Scraping in python
 
 # Requirements
 -Scrape multiple pages in one go
+
 -Minimal effort to respond to a change in website format
+
 -Parse Data
+
 -Output into text/csv
+
 -Display as HTML (maybe)
 
 # Scrape multiple pages in one go
