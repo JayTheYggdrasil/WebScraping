@@ -3,7 +3,7 @@ import requests
 
 def test(url):
     soup = get_data(url)
-    print(collect_bits(soup, ExampleFormat))
+    bits_to_csv("test", collect_bits(soup, ExampleFormat))
 
 def get_data(url):
     r  = requests.get(url)
@@ -21,6 +21,14 @@ def collect_bits(soup, format):
             #print(element, "\n")
             bits.append(mat.container_to_bit(element))
     return bits
+
+def bits_to_csv(filename, bits):
+    #Creates a new csv file and inputs the bits
+    f = open(filename + ".csv", "w+")
+    for bit in bits:
+        for index in range(len(bit)):
+            f.write(bit[index] + ("," if index < len(bit) - 1 else "\n"))
+    f.close()
 
 class BaseFormat:
     def __init__(self):
@@ -52,3 +60,6 @@ class ExampleFormat(BaseFormat):
         bit = [a.get("href"), location]
 
         return bit
+
+if __name__ == "__main__":
+    test("https://newenglandfacts.com/abc/1")
