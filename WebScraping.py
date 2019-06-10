@@ -22,6 +22,13 @@ def collect_bits(soup, format):
             bits.append(mat.container_to_bit(element))
     return bits
 
+def get_links(file):
+    f = open(file)
+    links = []
+    for link in f:
+        links.append(link)
+    return links
+
 def bits_to_csv(filename, bits):
     #Creates a new csv file and inputs the bits
     f = open(filename + ".csv", "w+")
@@ -36,15 +43,14 @@ class BaseFormat:
 
     def verify(self, element):
         #verifies that an element is of this format
-        pass
+        raise NotImplementedError
 
     def container_to_bit(self, container):
         #creates a bit from the container
-        pass
+        raise NotImplementedError
 
 class ExampleFormat(BaseFormat):
     def __init__(self):
-        super().__init__()
         self.element_type = "div"
 
     def verify(self, element):
@@ -58,7 +64,6 @@ class ExampleFormat(BaseFormat):
         a = element.a
         location = a.span.decode_contents()
         bit = [a.get("href"), location]
-
         return bit
 
 if __name__ == "__main__":
