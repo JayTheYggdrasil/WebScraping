@@ -1,9 +1,22 @@
 from bs4 import BeautifulSoup
 import requests
+import time
 
-def test(url):
-    soup = get_data(url)
-    bits_to_csv("test", collect_bits(soup, ExampleFormat))
+def test(file):
+    bits = []
+    for link in get_links("text.txt"):
+        soup = get_data(link)
+        bits += collect_bits(soup, ExampleFormat)
+    bits_to_csv("test", bits)
+
+def scrape_list(links_file, format, output_name, wait=0):
+    bits = []
+    for link in get_links(links_file):
+        soup = get_data(link)
+        bits += collect_bits(soup, format)
+        time.sleep(wait)
+
+    bits_to_csv(output_name, bits)
 
 def get_data(url):
     r  = requests.get(url)
@@ -26,7 +39,7 @@ def get_links(file):
     f = open(file)
     links = []
     for link in f:
-        links.append(link)
+        links.append(link.rstrip())
     return links
 
 def bits_to_csv(filename, bits):
