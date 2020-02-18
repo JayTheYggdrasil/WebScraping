@@ -1,4 +1,4 @@
-import matplotlib as plt
+# import matplotlib as plt
 import sqlite3
 from dbstuff import to_db_name
 
@@ -11,8 +11,12 @@ Analyze Champion Menu:
     Graph of related items, roles and keystones
 """
 
+_keystone = "keystone"
+_role = "role"
+_item = "item"
+_champion = "champion"
 
-def frequency(cur, of, given=None):
+def frequency(of, given=None):
     if given is None:
         given = {}
     conditions = ""
@@ -20,17 +24,17 @@ def frequency(cur, of, given=None):
     binding = False
     preceded = False
 
-    if "champion" in given and given["champion"] is not None:
-        conditions += "champion = '{}'".format(given["champion"])
+    if _champion in given and given[_champion] is not None:
+        conditions += "champion = '{}'".format(given[_champion])
         preceded = True
-    if "item" in given and given["item"] is not None:
+    if _item in given and given[_item] is not None:
         conditions += " AND " if preceded else ""
-        conditions += "item = '{}'".format(given["item"])
+        conditions += "item = '{}'".format(given[_item])
         preceded = True
         binding = True
-    if "keystone" in given and given["keystone"] is not None:
+    if _keystone in given and given[_keystone] is not None:
         conditions += " AND " if preceded else ""
-        conditions += "keystone = '{}'".format(given["keystone"])
+        conditions += "keystone = '{}'".format(given[_keystone])
         preceded = True
     if "role" in given and given["role"] is not None:
         conditions += " AND " if preceded else ""
@@ -41,14 +45,13 @@ def frequency(cur, of, given=None):
     else:
         inner_table = "(SELECT * FROM games g WHERE {})".format(conditions)
 
-    if of == "role" or of == "item" or of == "keystone" or of == "champion":
-        cur.execute("""
+    if of == _champion or of == _item or of == _role or of == _keystone:
+        return """
             SELECT {}, COUNT({}) AS frequency
             FROM {}
             GROUP BY {}
             ORDER BY COUNT({}) DESC
-        """.format(of, of, inner_table, of, of))
-        return cur.fetchall()
+        """.format(of, of, inner_table, of, of)
     else:
         print("Nope.")
 
@@ -62,15 +65,30 @@ def contents_of(cur, champion, column):
 
 
 def relational_frequency(cur, champion):
-    output = {}
+    # GOAL: Create a new table like
+    # {object: Any, with: Any, frequency}
 
-    keystones = contents_of(cur, champion, "keystone")
-    items = contents_of(cur, champion, "item")
-    roles = contents_of(cur, champion, "role")
-    given = {"champion": champion}
-    for i in items:
-        given["item"] = i
-        frequency(cur, "item", given) + frequency(cur, "role", given) + frequency(cur, "keystone", given)
+    # 1. Union every game object so that we have
+    # {game_id, object}
+
+    union_query = """
+        SELECT game_id, role AS object FROM games WHERE champion = '{}'
+        UNION
+        SELECT game_id, keystone AS object FROM games WHERE champion = '{}'
+        UNION
+        SELECT g.game_id, item AS object FROM games g, items i WHERE champion = '{}' AND g.game_id = i.game_id
+    """.format(champion, champion, champion)
+
+    # 2. Join using game_id to get
+    # {object, with}
+
+    join_query = """
+        SELECT a.object, b.object AS with FROM ({}) a, ({}) b WHERE a.game_id = b.game_id AND a.object != b.object
+    """.format(union_query, union_query)
+
+    # 3. Get the frequency of each "object, with" pair
+
+    return "SELECT object, with, COUNT(with) AS frequency FROM ({}) GROUP BY object, with".format(join_query)
 
 
 if __name__ == "__main__":
@@ -84,7 +102,11 @@ if __name__ == "__main__":
         # """)
         # print(cur.fetchall())
 
-        print(frequency(cur, "champion", {"role": None, "champion": None, "item": "black_cleaver", "keystone": "prototype_omnistone"}))
+        cur.execute(frequency(_role, {_role: None, _champion: "khazix", _item: None, _keystone: None}))
+        print(cur.fetchall())
+
+        cur.execute(relational_frequency(cur, "khazix"))
+        print(cur.fetchall())
 
         # cur.execute("""
         #     SELECT i1.item, i2.item FROM items i1, items i2, games g
@@ -94,6 +116,6 @@ if __name__ == "__main__":
         # print(cur.fetchall())
 
         cur.execute("""
-            SELECT name FROM games g WHERE keystone = 'prototype_omnistone' AND champion = 'gnar'
+            SELECT name FROM games g WHERE champion = 'khazix' AND keystone = 'phase_rush'
         """)
         print(cur.fetchall())
