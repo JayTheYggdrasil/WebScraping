@@ -1,92 +1,99 @@
-def find_jungle(player_data):
-    jungle_items = ["Enchantment: Cinderhulk", "Enchantment: Bloodrazor", "Enchantment: Warrior", "Enchantment: Runic Echoes"]
-    jungle_champions = dict()
-    for player in player_data:
-        champions = player_data[player]
-        for champion in champions:
-            for item in jungle_items:
-                if item in champions[champion][3]:
-                    if not champion in jungle_champions:
-                        jungle_champions[champion] = champions[champion] + [[player]]
-                    else:
-                        jungle_champions[champion] = combine_champion_data(champions[champion] + [[player]], jungle_champions[champion])
-                    break
-    canditates = set()
-    for champion in jungle_champions:
-        data = jungle_champions[champion]
-        if data[0] <= 15:
-            canditates.add(champion)
-            continue
-        top5 = [0, 0, 0, 0, 0]
-        top5_items = ["", "", "", "", ""]
-        for item in data[3]:
-            if item in component_items:
-                continue
-            if data[3][item] > min(top5):
-                index = top5.index(min(top5))
-                top5[index] = data[3][item]
-                top5_items[index] = item
-        for build in data[2]:
-            differences = 0
-            for item in build:
-                if item in component_items:
-                    continue
-                if item not in top5_items:
-                    differences += 1
-            if differences >= 3:
-                canditates.add(champion)
+import matplotlib as plt
+import sqlite3
+from dbstuff import to_db_name
 
-    return canditates, jungle_champions
+"""
+Goals:
 
-def combine_champion_data(data1, data2):
-    new_data = [data1[0] + data2[0], data1[1] + data2[1], data1[2] + data2[2], dict(), data1[4] + data2[4]]
-    for item in data1[3]:
-        if not data1[3][item] in new_data[3]:
-            new_data[3][item] = 0
-        new_data[3][item] += data1[3][item]
+Analyze Champion Menu:
+    Frequency of all roles, items, keystones
+    Frequency of all other roles, items, and keystones given one or more role, item or keystone
+    Graph of related items, roles and keystones
+"""
 
-    for item in data2[3]:
-        if not item in new_data[3]:
-            new_data[3][item] = 0
-        new_data[3][item] += data2[3][item]
-    return new_data
 
-def get_player_data():
-    """
-    players (dict):
-        player_name (dict):
-            champion_name (dict):
-                [
-                    frequency
-                    [keystones]
-                    [builds]
-                    item name (dict):
-                        frequency
-                    [players]
-                ]
-    """
-    with open("player_data.csv") as player_data:
-        players = dict()
-        for data in player_data:
-            values = data.split(", ")
-            values[-1] = values[-1].strip()
-            if "" in values:
-                values = values[:values.index("")]
-            if not values[0] in players:
-                players[values[0]] = dict()
-            if not values[1] in players[values[0]]:
-                players[values[0]][values[1]] = [0, [], [], dict()]
-            players[values[0]][values[1]][0] += 1
-            players[values[0]][values[1]][1].append(values[2])
-            players[values[0]][values[1]][2].append(values[3:])
-            for item in values[3:]:
-                if not item in players[values[0]][values[1]][3]:
-                    players[values[0]][values[1]][3][item] = 0
-                players[values[0]][values[1]][3][item] += 1
-    return players
+def frequency(cur, of, given=None):
+    if given is None:
+        given = {}
+    conditions = ""
 
-component_items = set(["Caulfield's Warhammer", "Dagger", "Control Ward", "Zeal", "Chain Vest", "Needlessly Large Rod", "Kindlegem", "Amplifying Tome", "Ruby Crystal", "Jaurim's Fist", "Blasting Wand", "Refillable Potion", "Long Sword", "Brawler's Gloves", "Total Biscuit of Everlasting Will", "Cloth Armor", "Giant's Belt", "Crystalline Bracer", "Negatron Cloak", "Fiendish Codex", "Broken Stopwatch", "Bramble Vest", "Sheen", "Phage", "Health Potion", "B. F. Sword", "Hunter's Talisman", "Hunter's Machete", "Arcane Sweeper", "Slightly Magical Boots", "Recurve Bow", "Spectre's Cowl", "Vampiric Scepter", "Poro-Snax", "Pickaxe", "Bilgewater Cutlass", "Faerie Charm", "Serrated Dirk", "Oblivion Orb", "Hextech Revolver", "Forbidden Idol", "Glacial Shroud", "Stinger"])
+    binding = False
+    preceded = False
+
+    if "champion" in given and given["champion"] is not None:
+        conditions += "champion = '{}'".format(given["champion"])
+        preceded = True
+    if "item" in given and given["item"] is not None:
+        conditions += " AND " if preceded else ""
+        conditions += "item = '{}'".format(given["item"])
+        preceded = True
+        binding = True
+    if "keystone" in given and given["keystone"] is not None:
+        conditions += " AND " if preceded else ""
+        conditions += "keystone = '{}'".format(given["keystone"])
+        preceded = True
+    if "role" in given and given["role"] is not None:
+        conditions += " AND " if preceded else ""
+        conditions += " AND role = '{}'".format(given["role"])
+
+    if binding or of == "item":
+        inner_table = "(SELECT * FROM games g, items i WHERE g.game_id = i.game_id AND {})".format(conditions)
+    else:
+        inner_table = "(SELECT * FROM games g WHERE {})".format(conditions)
+
+    if of == "role" or of == "item" or of == "keystone" or of == "champion":
+        cur.execute("""
+            SELECT {}, COUNT({}) AS frequency
+            FROM {}
+            GROUP BY {}
+            ORDER BY COUNT({}) DESC
+        """.format(of, of, inner_table, of, of))
+        return cur.fetchall()
+    else:
+        print("Nope.")
+
+
+def contents_of(cur, champion, column):
+    cur.execute(
+        "SELECT {} FROM games g, items i WHERE g.game_id = i.game_id AND champion = ? GROUP BY {}".format(column, column),
+        (to_db_name(champion), )
+    )
+    return cur.fetchall()
+
+
+def relational_frequency(cur, champion):
+    output = {}
+
+    keystones = contents_of(cur, champion, "keystone")
+    items = contents_of(cur, champion, "item")
+    roles = contents_of(cur, champion, "role")
+    given = {"champion": champion}
+    for i in items:
+        given["item"] = i
+        frequency(cur, "item", given) + frequency(cur, "role", given) + frequency(cur, "keystone", given)
+
 
 if __name__ == "__main__":
-    canditates, champion_data = find_jungle(get_player_data())
-    print(canditates)
+    with sqlite3.connect("league_of_legends.db") as conn:
+        cur = conn.cursor()
+        # cur.execute("""
+        #     SELECT i.item, COUNT(item) AS frequency
+        #     FROM games g, items i WHERE i.game_id = g.game_id AND g.champion = 'kayle'
+        #     GROUP BY item
+        #     ORDER BY COUNT(item) DESC
+        # """)
+        # print(cur.fetchall())
+
+        print(frequency(cur, "champion", {"role": None, "champion": None, "item": "black_cleaver", "keystone": "prototype_omnistone"}))
+
+        # cur.execute("""
+        #     SELECT i1.item, i2.item FROM items i1, items i2, games g
+        #     WHERE i1.game_id = i2.game_id AND g.game_id = i1.game_id AND i1.item != i2.item AND g.champion = 'ivern'
+        #     GROUP BY i1.game_id, i1.item
+        # """)
+        # print(cur.fetchall())
+
+        cur.execute("""
+            SELECT name FROM games g WHERE keystone = 'prototype_omnistone' AND champion = 'gnar'
+        """)
+        print(cur.fetchall())
